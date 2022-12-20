@@ -1,0 +1,383 @@
+---
+title: "Finalreport_timeseries"
+author: "7110021065 吳憲中"
+date: '2022-06-16'
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rmarkdown)
+library(knitr)
+library(urca)
+library(tseries)
+library(fUnitRoots)
+library(strucchange)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(hrbrthemes)
+library(TSA)
+library(ftsa)
+library(STFTS)
+```
+# This analysis is base on data from 2303-聯電
+```{r}
+load("C:/Users/stran/OneDrive/桌面/時間序列分析/期末報告/2303.rda")
+data <- na.omit(data)
+row.names(data) <- data$date
+data1 <- data
+data1$date <- NULL
+data2 <- as.data.frame(t(data1[10,]))
+#計算stock price
+data2$stock_price <- data2$`2020-04-15`
+#計算return
+return <- as.data.frame(diff(log(data2$stock_price))*100)
+row <- c(0)
+return <- rbind(row,return)
+data2 <- cbind(data2,return)
+colnames(data2) <- c("2020-03-23","stock_price","return")
+#計算CR
+CR <- list()
+cr <- 0
+for(i in 1:nrow(data2)){
+  cr <- cr + data2$return[i]
+  CR[i] <- cr
+}
+CR <- as.data.frame(CR)
+CR <- as.data.frame(t(CR))
+colnames(CR) <- c("CR")
+data2 <- cbind(data2,CR)
+#daily price
+open <- data$m_090030
+close <- data$m_133000
+price_daily <- close
+#計算daily return
+return_daily <- diff(log(close))*100
+return_daily <- as.data.frame(return_daily)
+#計算return whole
+data3 <- data1
+for(i in 1:nrow(data1)){
+  data3[i,1] <- 0
+  for(j in 2:ncol(data1)){
+    data3[i,j] <- data1[i,j] - data1[i,j-1]
+  }
+}
+#計算CR whole
+data4 <- data1
+for(i in 1:nrow(data1)){
+  data4[i,1] <- 0
+  for(j in 2:ncol(data1)){
+    data4[i,j] <- data1[i,j] - data1[i,1]
+  }
+}
+```
+
+## 1. unit Root check ： Phillips and Perron Unit Root Test
+### Null Hypothesis : there is no unit root ，$\alpha = 0.05$
+#### (a) Please check the existence of a unit root for the time series of minute stock prices, $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+sprice.pp <- ur.pp(data2$stock_price, type="Z-alpha", model = "constant", lags = "long")
+summary(sprice.pp)
+plot(data2$stock_price)
+```
+
+#### With Phillips and Perron test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is unit root for the time series of minute stock prices, $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ .
+
+#### (b) Please check the existence of a unit root for the time series of minute compound returns, $\lbrace{r_{i,t},T=1,2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+return.pp <- ur.pp(data2$return, type="Z-alpha", model = "constant", lags = "long")
+summary(return.pp)
+plot(data2$return)
+```
+
+#### With Phillips and Perron test , we have result that p-value = 0.7246 , hence we do not reject null hypothesis which means there is no unit root for the time series of minute compound returns, $\lbrace{r_{i,t},T=1,2,\ldots,T-1}\rbrace$ .
+
+#### (c) Please check the existence of a unit root for the time series of minute  cumulative returns, $\lbrace{CR_{i,t},T=1,2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+CR.pp <- ur.pp(data2$CR, type="Z-alpha", model = "constant", lags = "long")
+summary(CR.pp)
+plot(data2$CR)
+```
+
+#### With Phillips and Perron test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is unit root for the time series of minute cumulative returns, $\lbrace{CR_{i,t},T=1,2,\ldots,T-1}\rbrace$ .
+
+#### (d) Please check the existence of a unit root for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+```{r}
+price_daily.pp <- ur.pp(price_daily, type="Z-alpha", model = "constant", lags = "long")
+summary(price_daily.pp)
+plot(price_daily)
+```
+
+#### With Phillips and Perron test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is unit root for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+
+#### (e) Please check the existence of a unit root for the time series of daily compound returns, $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+```{r}
+return_daily.pp <- ur.pp(return_daily$return_daily, type="Z-alpha", model = "constant", lags = "long")
+summary(return_daily.pp)
+plot(return_daily$return_daily)
+```
+
+#### With Phillips and Perron test , we have result that p-value = 0.1392 , hence we do not reject null hypothesis which means there is no unit root for the time series of daily compound returns, $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+
+#### By the result of above , I make a conclusion that the data seems like to have higher volatility tend to have unitroots .Theoretically , data has unitroot implies randomness .
+
+## 2. Mean change check : Chow test
+### Null Hypothesis : there is no mean change or structure change ，$\alpha = 0.05$
+#### (a) Please check the existence of mean changes for the time series of minute stock prices , $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+sctest(data2$stock_price ~1, type = "Chow", point = 100)
+plot(data2$stock_price)
+```
+
+#### With Chow test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is mean change or structure change for the time series of minute stock prices , $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ .
+
+#### (b) Please check the existence of mean changes for the time series of minute compound returns, $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+sctest(data2$return ~1, type = "Chow", point = 100)
+plot(data2$return)
+```
+
+#### With Chow test , we have result that p-value = 0.7444 , hence we do not reject null hypothesis which means there is no mean change or structure change for the time series of minute compound returns, $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace$ .
+
+#### (c) Please check the existence of mean changes for the time series of minute  cumulative returns, $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+sctest(data2$CR ~1, type = "Chow", point = 100)
+plot(data2$CR)
+```
+
+#### With Chow test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is mean change or structure change for the time series of minute cumulative returns, $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace$ .
+
+#### (d) Please check the existence of mean changes for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+```{r}
+sctest(price_daily ~1, type = "Chow", point = 100)
+plot(price_daily)
+```
+
+#### With Chow test , we have result that p-value nearly equal to zero , hence we reject null hypothesis which means there is mean change or structure change for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+
+#### (e) Please check the existence of mean changes for the time series of daily compound returns , $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+```{r}
+sctest(return_daily$return_daily ~1, type = "Chow", point = 100)
+plot(return_daily$return_daily)
+```
+
+#### With Chow test , we have result that p-value = 0.2535 , hence we reject null hypothesis which means there is no mean change or structure change for the time series of daily compound returns , $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+
+#### By the result of above , We can see plots, data which has no mean change or structure change are relatively stable .I make a conclusion that the data seems like to have mean change or structure change with higher volatility .
+
+## 3. Stationarity check :
+### Null Hypothesis : data is stationary ，$\alpha = 0.05$
+#### (a)  Please check the stationarity for the time series of minute stock prices , $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+kpss.test(data2$stock_price, null = "Trend")
+plot(data2$stock_price)
+```
+
+#### With KPSS test , we have result that p-value smaller than crytical number , hence we reject null hypothesis which means its not stationary for the time series of minute stock prices , $\lbrace{P_{i,t},T=1,2,\ldots,T-1}\rbrace$ .
+
+#### (b)  Please check the stationarity for the time series of minute compound returns , $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+kpss.test(data2$return, null = "Trend")
+plot(data2$return)
+```
+
+#### With KPSS test , we have result that p-value greater than crytical number , hence we reject null hypothesis which means its stationary for the time series of minute compound returns , $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace$ .
+
+#### (c)  Please check the stationarity for the time series of minute  cumulative returns, $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace$ , in a specific trading day i.
+```{r}
+kpss.test(data2$CR, null = "Trend")
+plot(data2$CR)
+```
+
+#### With KPSS test , we have result that p-value smaller than crytical number , hence we reject null hypothesis which means its not stationary for the time series of minute  cumulative returns, $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace$ .
+
+#### (d)  Please check the stationarity for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+```{r}
+kpss.test(price_daily, null = "Trend")
+plot(price_daily)
+```
+
+#### With KPSS test , we have result that p-value smaller than crytical number , hence we reject null hypothesis which means its not stationary for the time series of daily prices, $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace$ .
+
+#### (e)  Please check the stationarity for the time series of daily compound returns , $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+```{r}
+kpss.test(return_daily$return_daily, null = "Trend")
+plot(return_daily$return_daily)
+```
+
+#### With KPSS test , we have result that p-value greater than crytical number , hence we reject null hypothesis which means its stationary for the time series of daily compound returns , $\lbrace{r_{i},i=2,\ldots,N}\rbrace$ .
+
+#### By the result of above , We can see plots, data which is stationary are relatively stable .I make a conclusion that the data seems like higher volatility lead non-stationary .
+
+## 4. Statistical inferences :
+#### (a)Is it appropriate to test $H_{0} : E(P_{i,t}) = P_{0}$ with $\lbrace{P_{i,t},T=2,\ldots,T-1}\rbrace ?$  If yes, how do you do the inference $?$
+```{r}
+plot(data2$stock_price)
+```
+
+#### I think it can't be test , becasue the data is not stationary which means with different period of data we select there can be different $P_{0}$ . And becuase of the volatility , it's hard to define $P_{0}$ . Even we choose one $P_{0}$ , it might lack of representative for whole data.
+
+#### (b)Is it appropriate to test $H_{0} : E(r_{i,t}) = 0$ with $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace ?$  If yes, how do you do the inference $?$
+```{r}
+plot(data2$return)
+```
+
+#### With intuition by just looking the plot , we can easily say that it's able to test . Since return are sationary , and it seems has the mean to converge . Also the data of return is not highly volatility , 0 may represent all observation in data .
+
+#### (c)Is it appropriate to test $H_{0} : E(CR_{i,t}) = 0$ with $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace ?$  If yes, how do you do the inference $?$
+```{r}
+plot(data2$CR)
+```
+
+#### Same , because of the data is non-stationary , as time goes on ,data will deviate because of its autocorrelation impact,so we can't test it .
+
+#### (d)Is it appropriate to test $H_{0} : E(P_{i}) = P_{0}$ with $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace ?$  If yes, how do you do the inference $?$
+```{r}
+plot(price_daily)
+```
+
+#### Same result with 2-(a) , it's hard to define $P_{0}$ . Even we choose one $P_{0}$ , it might lack of representative for whole data. So I think it can't be tested . The volatility of data might makes $E(P_{i})$ not representive whole data . For example , at index = 400 , we can see that trend before that time were totally different from trend after it . Since the pirce is unpredictable ,we can say what trend will be with 100% faith .
+
+#### (e)Is it appropriate to test $H_{0} : E(r_{i}) = 0$ with $\lbrace{r_{i},i=2,\ldots,N}\rbrace ?$  If yes, how do you do the inference $?$
+```{r}
+plot(return_daily$return_daily)
+```
+
+#### Although the data is vary , but we still can see that its average is laying on one identical number , maybe its mean .Furthermore , the data is stationary ,so I think it can be tested .
+
+## 5. Build-up time series models :
+#### (a)Is it appropriate to build up an ARMA (p, q) to represent the time dependence of the stochastic process with $\lbrace{P_{i,t},T=2,\ldots,T-1}\rbrace ?$ If yes, what is your suggested model $?$
+```{r}
+ar1 <- arima(data2$stock_price, order=c(1,0,1))
+plot(ar1)
+```
+
+#### (b)Is it appropriate to build up an ARMA (p, q) to represent the time dependence of the stochastic process with $\lbrace{r_{i,t},T=2,\ldots,T-1}\rbrace ?$ If yes, what is your suggested model $?$
+```{r}
+ar2 <- arima(data2$return, order=c(1,0,1))
+plot(ar2)
+```
+
+#### (c)Is it appropriate to build up an ARMA (p, q) to represent the time dependence of the stochastic process with $\lbrace{CR_{i,t},T=2,\ldots,T-1}\rbrace ?$ If yes, what is your suggested model $?$
+```{r}
+ar3 <- arima(data2$CR, order=c(1,0,1))
+plot(ar3)
+```
+
+#### (d)Is it appropriate to build up an ARMA (p, q) to represent the time dependence of the stochastic process with $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace ?$ If yes, what is your suggested model $?$
+```{r}
+ar4 <- arima(price_daily, order=c(1,0,1))
+plot(ar4)
+```
+
+#### (e)Is it appropriate to build up an ARMA (p, q) to represent the time dependence of the stochastic process with $\lbrace{r_{i},i=2,\ldots,N}\rbrace ?$ If yes, what is your suggested model $?$
+```{r}
+ar5 <- arima(return_daily$return_daily, order=c(1,0,1))
+plot(ar5)
+```
+
+#### All of data can be build up an $ARMA(p,q)$ to represent the time dependence of the stochastic process ,because all this timseries data are autocorrelative .Also with AR we find out that only minute stock prices , minute cumulative returns and daily prices have unitRoot .Same result by early work .
+
+## 6. Forecasts evaluations :
+#### (a)Is it possible to do the forecasts for the out-sample observations $\lbrace{P_{i},i=N+1,\ldots,N+h}\rbrace $ given the in-sample $\lbrace{P_{i},i=1,2,\ldots,N}\rbrace ?$  If yes, how do you evaluate your forecasting accuracy $?$
+#### No ,it can not . Because of non-stationary ,price are highly relate to past info and its volatility is very high .So we can't forecasts the future prices ,because it's unpredictable .
+
+#### (b)Is it possible to do the forecasts for the out-sample observations $\lbrace{r_{i},i=N+1,\ldots,N+h}\rbrace $ given the in-sample $\lbrace{r_{i},i=1,2,\ldots,N}\rbrace ?$  If yes, how do you evaluate your forecasting accuracy $?$
+#### Yes ,we can . Since the data is stationary , we can find the pattern of forecasts return ,makes the future return might be predictable .
+```{r}
+od <- options(digits = 5) # avoid too much spurious accuracy
+predict(arima(lh, order = c(3,0,0)), n.ahead = 12)
+
+(fit <- arima(return_daily, order = c(0,1,1),
+              seasonal = list(order = c(0,1,1))))
+predict(fit, n.ahead = 6)
+options(od)
+```
+
+## 7. Reconstruction for Functional Data :
+#### (a) Reconstruct the functional data with FPCA with 
+$$ \lbrace{r_{i,t},i=1,\ldots,N,T=2,\ldots,T}\rbrace $$
+
+```{r}
+nbasis = 6
+basisobj <- create.monomial.basis(c(-1,1), nbasis)
+```
+
+```{r}
+T <- ncol(data3)
+argvals = seq(0,1,len=266) 
+Ys = smooth.basis(argvals=argvals, y=t(data3), fdParobj=basisobj,
+                  returnMatrix=TRUE)
+Xfd = Ys$fd
+coeff <- Xfd$coefs
+Rec_y <- t(eval.fd(argvals, Xfd))
+```
+
+```{r}
+N <- NROW(data3)
+T <- NCOL(data3)
+
+colfuncf <- colorRampPalette(c("grey", "blue"))
+color.setf <- colfuncf(T)
+par(mfrow=c(1,1))
+plot(seq(1,T,1),data3[1,],ylim=range(data3),type="l",
+     main="Intraday Minute Returns",ylab="LTW",xlab="T", col=color.setf[1])
+for (i in 2:N){
+  lines(seq(1,T,1),data3[i,], col=color.setf[i])
+}
+```
+
+```{r}
+par(mfrow=c(1,1))
+plot(seq(1,T,1),Rec_y[1,],ylim=range(Rec_y),type="l",
+     main="Reconstructed Intraday Minute Returns",ylab="Rec_CRTW",xlab="T", col=color.setf[1])
+for (i in 2:N){
+  lines(seq(1,T,1),Rec_y[i,], col=color.setf[i])
+}
+```
+
+#### (b) Reconstruct the functional data with FPCA with 
+#### $$ \lbrace{CR_{i,t},i=1,\ldots,N , T=2,\ldots,T}\rbrace $$ 
+
+```{r}
+nbasis = 6
+basisobj <- create.monomial.basis(c(-1,1), nbasis)
+```
+
+```{r}
+T <- ncol(data4)
+argvals = seq(0,1,len=266) 
+Ys = smooth.basis(argvals=argvals, y=t(data4), fdParobj=basisobj,
+                  returnMatrix=TRUE)
+Xfd = Ys$fd
+coeff <- Xfd$coefs
+Rec_y <- t(eval.fd(argvals, Xfd))
+```
+
+```{r}
+N <- NROW(data4)
+T <- NCOL(data4)
+
+colfuncf <- colorRampPalette(c("grey", "blue"))
+color.setf <- colfuncf(T)
+par(mfrow=c(1,1))
+plot(seq(1,T,1),data4[1,],ylim=range(data4),type="l",
+     main="Intraday Minute Returns",ylab="LTW",xlab="T", col=color.setf[1])
+for (i in 2:N){
+  lines(seq(1,T,1),data4[i,], col=color.setf[i])
+}
+```
+
+```{r}
+par(mfrow=c(1,1))
+plot(seq(1,T,1),Rec_y[1,],ylim=range(Rec_y),type="l",
+     main="Reconstructed Intraday Minute Returns",ylab="Rec_CRTW",xlab="T", col=color.setf[1])
+for (i in 2:N){
+  lines(seq(1,T,1),Rec_y[i,], col=color.setf[i])
+}
+```
+
